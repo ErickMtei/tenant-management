@@ -1,38 +1,21 @@
 import { useState } from 'react'
-import TenantCard from './components/TenantCard'
-
-const tenants = [
-  { id: 1, full_name: 'Juma Hassan', phone_number: '0711000001', unit: 'A1' },
-  { id: 2, full_name: 'Asha Mohamed', phone_number: '0711000002', unit: 'A2' },
-  { id: 3, full_name: 'Peter Mushi', phone_number: '0711000003', unit: 'A3' },
-]
+import { getToken, logout } from './api'
+import LoginForm from './components/LoginForm'
+import Dashboard from './components/Dashboard'
 
 function App() {
-  const [search, setSearch] = useState('')
+  const [loggedIn, setLoggedIn] = useState(Boolean(getToken()))
 
-  const filtered = tenants.filter((tenant) =>
-    tenant.full_name.toLowerCase().includes(search.toLowerCase())
-  )
+  function handleLogout() {
+    logout()
+    setLoggedIn(false)
+  }
 
-  return (
-    <div style={{ maxWidth: 600, margin: '2rem auto', fontFamily: 'sans-serif' }}>
-      <h1>Tenant Management</h1>
+  if (!loggedIn) {
+    return <LoginForm onLoggedIn={() => setLoggedIn(true)} />
+  }
 
-      <input
-        type="text"
-        placeholder="Search by name..."
-        value={search}
-        onChange={(event) => setSearch(event.target.value)}
-        style={{ width: '100%', padding: 8, marginBottom: 12 }}
-      />
-
-      <p>{filtered.length} tenant(s) found</p>
-
-      {filtered.map((tenant) => (
-        <TenantCard key={tenant.id} tenant={tenant} />
-      ))}
-    </div>
-  )
+  return <Dashboard onLogout={handleLogout} />
 }
 
 export default App
