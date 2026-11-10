@@ -34,11 +34,13 @@ class LeaseAdmin(admin.ModelAdmin):
         'unit__property__name',
     )
     autocomplete_fields = ('tenant', 'unit')
+    readonly_fields = ('end_date',)
     list_select_related = ('tenant', 'unit__property')
+
 
 @admin.register(Payment)
 class PaymentAdmin(admin.ModelAdmin):
-    list_display = ('lease', 'amount', 'payment_date', 'period_month', 'method')
+    list_display = ('lease', 'amount', 'monthly_rent', 'months', 'payment_date', 'method')
     list_filter = ('method',)
     date_hierarchy = 'payment_date'
     autocomplete_fields = ('lease',)

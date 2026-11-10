@@ -10,4 +10,4 @@ class PaymentFilter(django_filters.FilterSet):
 
     class Meta:
         model = Payment
-        fields = ['lease', 'lease__tenant', 'method', 'period_month']
+        fields = ['lease', 'lease__tenant', 'method']

@@ -1,8 +1,7 @@
-from rest_framework.routers import DefaultRouter
 from django.urls import path
+from rest_framework.routers import DefaultRouter
 
-from .reports import ArrearsReportView, SummaryReportView
-
+from .reports import ExpiringLeasesReportView, SummaryReportView
 from .views import (
     LeaseViewSet,
     PaymentViewSet,
@@ -18,8 +17,7 @@ router.register('tenants', TenantViewSet)
 router.register('leases', LeaseViewSet)
 router.register('payments', PaymentViewSet)
 
-urlpatterns = router.urls
 urlpatterns = router.urls + [
-    path('reports/arrears/', ArrearsReportView.as_view(), name='report-arrears'),
+    path('reports/expiring/', ExpiringLeasesReportView.as_view(), name='report-expiring'),
     path('reports/summary/', SummaryReportView.as_view(), name='report-summary'),
 ]

@@ -1,5 +1,17 @@
+import calendar
+from datetime import date
+
 from django.db import models
 
+
+def add_months(start, months):
+    """Add months to a date. If the day does not exist in the target month,
+    use the last day of that month (e.g. Oct 31 + 1 month = Nov 30)."""
+    month_index = start.month - 1 + months
+    year = start.year + month_index // 12
+    month = month_index % 12 + 1
+    day = min(start.day, calendar.monthrange(year, month)[1])
+    return date(year, month, day)
 
 class Property(models.Model):
     """A building or compound that contains rentable units."""
@@ -58,7 +70,7 @@ class Tenant(models.Model):
 
 
 class Lease(models.Model):
-    """A rental agreement between a tenant and a unit."""
+    """A rental agreement. end_date is calculated from payments, never typed."""
 
     tenant = models.ForeignKey(
         Tenant, on_delete=models.PROTECT, related_name='leases'
@@ -67,10 +79,7 @@ class Lease(models.Model):
         Unit, on_delete=models.PROTECT, related_name='leases'
     )
     start_date = models.DateField()
-    end_date = models.DateField(null=True, blank=True)
-    deposit_amount = models.DecimalField(
-        max_digits=10, decimal_places=2, default=0
-    )
+    end_date = models.DateField(editable=False)
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -79,7 +88,7 @@ class Lease(models.Model):
 
 
 class Payment(models.Model):
-    """A rent payment made against a lease."""
+    """A prepaid rent payment. It locks in the rent used and the months bought."""
 
     class Method(models.TextChoices):
         CASH = 'cash', 'Cash'
@@ -90,10 +99,9 @@ class Payment(models.Model):
         Lease, on_delete=models.PROTECT, related_name='payments'
     )
     amount = models.DecimalField(max_digits=10, decimal_places=2)
+    monthly_rent = models.DecimalField(max_digits=10, decimal_places=2)
+    months = models.PositiveIntegerField()
     payment_date = models.DateField()
-    period_month = models.DateField(
-        help_text='First day of the month this payment covers, e.g. 2026-11-01'
-    )
     method = models.CharField(
         max_length=20, choices=Method.choices, default=Method.CASH
     )
@@ -101,4 +109,4 @@ class Payment(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
-        return f'{self.lease} - {self.amount} ({self.period_month:%Y-%m})'
+        return f'{self.lease} - {self.amount} ({self.months} months)'

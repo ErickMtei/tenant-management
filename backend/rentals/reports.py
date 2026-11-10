@@ -1,53 +1,45 @@
-import calendar
-from datetime import datetime
+from datetime import timedelta
 from decimal import Decimal
-from django.db.models import Count, DecimalField, F, Q, Sum, Value
-from django.db.models import DecimalField, F, Q, Sum, Value
-from django.db.models.functions import Coalesce
+
+from django.db.models import Count, Sum
 from django.utils import timezone
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .models import Lease, Unit
+from .models import Lease, Payment, Unit
 
 
-def parse_month(value):
-    """Turn '2026-10' into date(2026, 10, 1). Defaults to the current month."""
+def parse_days(value, default=30):
+    """Read ?days=NN from the query string and validate it."""
     if not value:
-        return timezone.localdate().replace(day=1)
+        return default
     try:
-        return datetime.strptime(value, '%Y-%m').date()
+        days = int(value)
     except ValueError:
-        raise ValidationError({'month': 'Use the format YYYY-MM, e.g. 2026-10.'})
+        raise ValidationError({'days': 'Must be a whole number.'})
+    if days < 1 or days > 365:
+        raise ValidationError({'days': 'Must be between 1 and 365.'})
+    return days
 
 
-def lease_balances(month_start):
-    """Active leases that cover the given month, with paid amount and balance."""
-    last_day = calendar.monthrange(month_start.year, month_start.month)[1]
-    month_end = month_start.replace(day=last_day)
+class ExpiringLeasesReportView(APIView):
+    """GET /api/reports/expiring/?days=30 - active leases ending soon.
 
-    return (
-        Lease.objects.filter(is_active=True, start_date__lte=month_end)
-        .filter(Q(end_date__isnull=True) | Q(end_date__gte=month_start))
-        .select_related('tenant', 'unit__property')
-        .annotate(
-            paid=Coalesce(
-                Sum('payments__amount', filter=Q(payments__period_month=month_start)),
-                Value(Decimal('0')),
-                output_field=DecimalField(max_digits=12, decimal_places=2),
-            )
-        )
-        .annotate(balance=F('unit__monthly_rent') - F('paid'))
-    )
-
-
-class ArrearsReportView(APIView):
-    """GET /api/reports/arrears/?month=2026-10 - tenants who owe rent."""
+    Includes leases that already ended but are still marked active,
+    because those tenants need to be followed up too.
+    """
 
     def get(self, request):
-        month_start = parse_month(request.query_params.get('month'))
-        leases = lease_balances(month_start).filter(balance__gt=0).order_by('-balance')
+        days = parse_days(request.query_params.get('days'))
+        today = timezone.localdate()
+        limit = today + timedelta(days=days)
+
+        leases = (
+            Lease.objects.filter(is_active=True, end_date__lte=limit)
+            .select_related('tenant', 'unit__property')
+            .order_by('end_date')
+        )
 
         results = [
             {
@@ -56,49 +48,65 @@ class ArrearsReportView(APIView):
                 'tenant_name': lease.tenant.full_name,
                 'phone_number': lease.tenant.phone_number,
                 'unit': str(lease.unit),
-                'monthly_rent': lease.unit.monthly_rent,
-                'paid': lease.paid,
-                'balance': lease.balance,
+                'start_date': lease.start_date,
+                'end_date': lease.end_date,
+                'days_left': (lease.end_date - today).days,
             }
             for lease in leases
         ]
         return Response(
-            {
-                'month': month_start.strftime('%Y-%m'),
-                'count': len(results),
-                'total_outstanding': sum((r['balance'] for r in results), Decimal('0')),
-                'results': results,
-            }
+            {'days': days, 'count': len(results), 'results': results}
         )
 
 
 class SummaryReportView(APIView):
-    """GET /api/reports/summary/?month=2026-10 - occupancy and rent collection."""
+    """GET /api/reports/summary/?month=2026-10 - occupancy and money received."""
 
     def get(self, request):
-        month_start = parse_month(request.query_params.get('month'))
-        leases = list(lease_balances(month_start))
+        today = timezone.localdate()
+        month = request.query_params.get('month')
 
-        expected = sum((l.unit.monthly_rent for l in leases), Decimal('0'))
-        collected = sum((l.paid for l in leases), Decimal('0'))
+        if month:
+            try:
+                year, mon = (int(part) for part in month.split('-'))
+                start = today.replace(year=year, month=mon, day=1)
+            except (ValueError, TypeError):
+                raise ValidationError(
+                    {'month': 'Use the format YYYY-MM, e.g. 2026-10.'}
+                )
+        else:
+            start = today.replace(day=1)
+
+        # First day of the next month
+        if start.month == 12:
+            next_start = start.replace(year=start.year + 1, month=1)
+        else:
+            next_start = start.replace(month=start.month + 1)
+
+        received = Payment.objects.filter(
+            payment_date__gte=start, payment_date__lt=next_start
+        ).aggregate(total=Sum('amount'))['total'] or Decimal('0')
+
         units_by_status = {
             row['status']: row['total']
             for row in Unit.objects.values('status').annotate(total=Count('id'))
         }
 
+        expiring_soon = Lease.objects.filter(
+            is_active=True, end_date__lte=today + timedelta(days=30)
+        ).count()
+
         return Response(
             {
-                'month': month_start.strftime('%Y-%m'),
+                'month': start.strftime('%Y-%m'),
                 'units': {
                     'total': sum(units_by_status.values()),
                     'vacant': units_by_status.get('vacant', 0),
                     'occupied': units_by_status.get('occupied', 0),
                     'maintenance': units_by_status.get('maintenance', 0),
                 },
-                'rent': {
-                    'expected': expected,
-                    'collected': collected,
-                    'outstanding': expected - collected,
-                },
+                'received': received,
+                'active_leases': Lease.objects.filter(is_active=True).count(),
+                'expiring_soon': expiring_soon,
             }
         )
