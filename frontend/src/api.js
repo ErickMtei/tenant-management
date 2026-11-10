@@ -38,3 +38,7 @@ export async function apiGet(path) {
 
   return response.json()
 }
+
+export function formatMoney(value) {
+  return Number(value).toLocaleString('en-US', { maximumFractionDigits: 0 })
+}

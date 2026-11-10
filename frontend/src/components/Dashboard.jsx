@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { apiGet } from '../api'
-import SummaryCard from './SummaryCard'
 import TenantCard from './TenantCard'
+import SummaryCards from './SummaryCards'
+
 
 function Dashboard({ onLogout }) {
   const [tenants, setTenants] = useState([])
@@ -39,9 +40,7 @@ function Dashboard({ onLogout }) {
         <button onClick={onLogout}>Log out</button>
       </div>
 
-      <div style={{ display: 'flex', gap: 12, marginBottom: 16 }}>
-        <SummaryCard title="Total tenants" value={tenants.length} color="blue" />
-      </div>
+      <SummaryCards />
 
       <input
         type="text"
