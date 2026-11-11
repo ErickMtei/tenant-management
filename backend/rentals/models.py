@@ -1,7 +1,7 @@
 import calendar
 from datetime import date
-
 from django.db import models
+from django.conf import settings
 
 
 def add_months(start, months):
@@ -64,6 +64,13 @@ class Tenant(models.Model):
     email = models.EmailField(blank=True)
     national_id = models.CharField(max_length=50, unique=True)
     created_at = models.DateTimeField(auto_now_add=True)
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='tenant_profile',
+    )
 
     def __str__(self):
         return self.full_name
