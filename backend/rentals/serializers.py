@@ -1,6 +1,6 @@
 from rest_framework import serializers
-
 from .models import Lease, Payment, Property, Tenant, Unit
+from django.utils import timezone
 
 
 class PropertySerializer(serializers.ModelSerializer):
@@ -34,7 +34,14 @@ class TenantSerializer(serializers.ModelSerializer):
         read_only_fields = ['created_at']
 
 
+from django.utils import timezone
+
+# ... imports zilizopo juu, ongeza mstari huo ...
+
+
 class LeaseSerializer(serializers.ModelSerializer):
+    """Read-only view of a lease. Leases are created through LeaseCreateSerializer."""
+
     tenant_name = serializers.CharField(source='tenant.full_name', read_only=True)
     unit_label = serializers.CharField(source='unit.__str__', read_only=True)
 
@@ -44,26 +51,24 @@ class LeaseSerializer(serializers.ModelSerializer):
             'id', 'tenant', 'tenant_name', 'unit', 'unit_label',
             'start_date', 'end_date', 'is_active', 'created_at',
         ]
-        # end_date is calculated by the system from payments (step 6.2)
-        read_only_fields = ['end_date', 'created_at']
+        read_only_fields = fields
 
-    def validate(self, attrs):
-        # On partial updates (PATCH), fall back to the existing values
-        instance = self.instance
-        unit = attrs.get('unit', getattr(instance, 'unit', None))
-        is_active = attrs.get('is_active', getattr(instance, 'is_active', True))
 
-        if is_active:
-            others = Lease.objects.filter(unit=unit, is_active=True)
-            if instance:
-                others = others.exclude(pk=instance.pk)
-            if others.exists():
-                raise serializers.ValidationError(
-                    {'unit': 'This unit already has an active lease.'}
-                )
+class LeaseCreateSerializer(serializers.Serializer):
+    """Input for creating a lease together with its first payment."""
 
-        return attrs
+    tenant = serializers.PrimaryKeyRelatedField(queryset=Tenant.objects.all())
+    unit = serializers.PrimaryKeyRelatedField(queryset=Unit.objects.all())
+    start_date = serializers.DateField()
+    amount = serializers.DecimalField(max_digits=10, decimal_places=2)
+    payment_date = serializers.DateField(default=timezone.localdate)
+    method = serializers.ChoiceField(choices=Payment.Method.choices, default=Payment.Method.CASH)
+    reference = serializers.CharField(max_length=100, required=False, allow_blank=True, default='')
 
+    def validate_amount(self, value):
+        if value <= 0:
+            raise serializers.ValidationError('Amount must be greater than zero.')
+        return value
 
 class PaymentSerializer(serializers.ModelSerializer):
     tenant_name = serializers.CharField(
