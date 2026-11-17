@@ -1,6 +1,9 @@
 from rest_framework import serializers
 from .models import Lease, Payment, Property, Tenant, Unit
 from django.utils import timezone
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError as DjangoValidationError
+from accounts.models import User
 
 
 class PropertySerializer(serializers.ModelSerializer):
@@ -23,21 +26,38 @@ class UnitSerializer(serializers.ModelSerializer):
             'unit_number', 'monthly_rent', 'status',
         ]
 
-
 class TenantSerializer(serializers.ModelSerializer):
+    has_account = serializers.SerializerMethodField()
+
     class Meta:
         model = Tenant
         fields = [
             'id', 'full_name', 'phone_number',
-            'email', 'national_id', 'created_at',
+            'email', 'national_id', 'created_at', 'has_account',
         ]
         read_only_fields = ['created_at']
 
+    def get_has_account(self, obj):
+        return obj.user_id is not None
 
-from django.utils import timezone
 
-# ... imports zilizopo juu, ongeza mstari huo ...
+class TenantAccountSerializer(serializers.Serializer):
+    """Input for creating a portal login for a tenant."""
 
+    username = serializers.CharField(max_length=150)
+    password = serializers.CharField(write_only=True, style={'input_type': 'password'})
+
+    def validate_username(self, value):
+        if User.objects.filter(username__iexact=value).exists():
+            raise serializers.ValidationError('This username is already taken.')
+        return value
+
+    def validate_password(self, value):
+        try:
+            validate_password(value)
+        except DjangoValidationError as error:
+            raise serializers.ValidationError(list(error.messages))
+        return value
 
 class LeaseSerializer(serializers.ModelSerializer):
     """Read-only view of a lease. Leases are created through LeaseCreateSerializer."""

@@ -8,6 +8,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .models import Lease, Payment, Unit
+from accounts.permissions import access_for
 
 
 def parse_days(value, default=30):
@@ -29,6 +30,8 @@ class ExpiringLeasesReportView(APIView):
     Includes leases that already ended but are still marked active,
     because those tenants need to be followed up too.
     """
+    role_access = access_for('reports')
+
 
     def get(self, request):
         days = parse_days(request.query_params.get('days'))
@@ -61,6 +64,8 @@ class ExpiringLeasesReportView(APIView):
 
 class SummaryReportView(APIView):
     """GET /api/reports/summary/?month=2026-10 - occupancy and money received."""
+    role_access = access_for('reports')
+
 
     def get(self, request):
         today = timezone.localdate()
